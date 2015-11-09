@@ -58,7 +58,7 @@
 (deftest compile-or-pattern
   (is (satisfies? pattern/PatternBehaviour (pattern/compile-pattern ['?and ['?is :a identity] ['?is :a number?]]))))
 
-(defn test-match1 []
+(deftest test-match1
   (is (= (pattern/match (pattern/compile (pattern/line->words "I need a ?X")) (pattern/line->words "I need a vacation"))
          {"X" "vacation"}))
 
@@ -67,7 +67,7 @@
   (is (= (pattern/match   (pattern/compile (pattern/line->words "I need a ?X and a ?Y")) (pattern/line->words "I need a vacation and a hobby")) {"X" "vacation" "Y" "hobby"})))
 
 
-(defn test-match-multi []
+(deftest test-match-multi
   (is (= (pattern/match   (pattern/compile (pattern/line->words "I need a ?*X in ?Y")) (pattern/line->words "I need a nice long vacation in Mallorca")))
       {"X" ["nice" "long"] "Y" "Mallorca"}))
 

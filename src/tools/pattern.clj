@@ -97,7 +97,7 @@
               (when (= k x)
                 (recur (inc i) (rest input-xs)))))
           (if x
-            (cons x input-xs)
+            (cons x (rest input-xs))
             (tuple/vector)))))))
 
 (defn constant-pattern?
@@ -169,10 +169,10 @@
   PatternBehaviour
   (-match [_ inputs]
     (loop [acc []  input-xs inputs]
-      (let [[x & xs] input-xs]
+      (let [x (first input-xs)]
         (if (and (not (terminating-predicate? input-xs)) (predicate? x))
           (recur (conj acc x)
-                 xs)
+                 (rest input-xs))
           (tuple/vector (tuple/hash-map var acc) input-xs))))))
 
 
