@@ -14,7 +14,8 @@
   (:require [schema.core :as s]
             [clojure.string :as string]
             [clj-tuple :as tuple])
-  (:import (clojure.lang PersistentVector ISeq Symbol Keyword ))
+  (:import (clojure.lang PersistentVector ISeq Symbol Keyword)
+           (java.util Collection))
   (:refer-clojure :exclude [compile]))
 
 (declare compile-pattern)
@@ -116,13 +117,14 @@
    return: A sequence of PatternBehaviour implementations with the '?is _constant_ paths merged"
   [patterns]
   (let [id (atom 0)
-        p-f #(if (constant-pattern? %) :_constant_ (swap! id inc))
+        p-f #(if (and (coll? %) (constant-pattern? %)) :_constant_ (swap! id inc))
         p-patterns (partition-by p-f patterns)
 
-        constant-group? #(constant-pattern? (first %))
+        constant-group? #(and (coll? (first %))
+                              (constant-pattern? (first %)))
 
         optimise-f (fn [patterns2 pattern-group]
-                     ; (prn "pattern2 " patterns2  " pattern-group " pattern-group)
+
                      (if (constant-group? pattern-group)
                        (conj patterns2 ['?constants-match (into [] (map constant-pattern-val) pattern-group)])
                        (apply conj patterns2 pattern-group)))]
@@ -152,6 +154,11 @@
 ;;;;;;;;;;;
 ;;;;;; Internal Protocols
 
+;;;;;;; PatternCompiler protocol supports different data types and allows plugable compilation
+;;;;;;;
+
+(defprotocol PatternCompiler
+  (-compile [this] "Returns a single PatternBehavior"))
 
 ;;;;;;; Patterns are compiled into PatternBehaviour instances, this allows for fast precompiled matching
 ;;;;;;; To compile into behaviours multi methods are used
@@ -183,7 +190,7 @@
     ;;return the rest input from the matcher that read the farthest, and merge all maps.
     (let [vals (map #(-match % inputs) matchers)]
       (when (every? match-map? vals)
-        (apply merge-with merge-match-results vals)))))
+        (reduce merge-match-results vals)))))
 
 
 (defrecord OrPattern [matchers]
@@ -206,7 +213,7 @@
                 (if match-map2
                   (recur (inc i) rest-input (merge match-map match-map2))
                   nil))))
-          match-map)))))
+          (tuple/vector match-map input-xs))))))
 
 
 (defrecord IsConstantMergedPattern [constants]
@@ -246,7 +253,7 @@
 (defmethod translate-to-pattern String [^String v]
   (let [var-name (extract-var-name v)
         op (if (is*-var? v) '?*is '?is)]
-    [op var-name (if (= :_constant_ var-name) #(zero? (.compareToIgnoreCase ^String v ^String %)) identity) (if (= :_constant_ var-name) v)]))
+    [op var-name (if (= :_constant_ var-name) #(zero? (= ^String v ^String %)) identity) (if (= :_constant_ var-name) v)]))
 
 (defmethod translate-to-pattern Symbol [v]
   (let [var-name (extract-var-name (name v))
@@ -261,8 +268,14 @@
 (defmethod translate-to-pattern PersistentVector [v] v)
 (defmethod translate-to-pattern ISeq [v] v)
 
+;;; allow pattern behviours in precompilation
+(defmethod translate-to-pattern :default [v]
+  (if (satisfies? PatternBehaviour v)
+    v
+    (throw (str "No method in multimethod 'translate-to-pattern' for dispatch value " v))))
 
-(defmethod compile-to-type '?is [[_ var predicate?]]
+
+(defmethod compile-to-type '?is [[_ var predicate? :as all]]
   (->SingleVarPattern var (if predicate? predicate? identity)))
 
 (defmethod compile-to-type '?*is [[_ var predicate?]]
@@ -277,8 +290,14 @@
 (defmethod compile-to-type '?constants-match [[_ constants]]
   (->IsConstantMergedPattern constants))
 
+(defmethod compile-to-type :default [v]
+  (if (satisfies? PatternBehaviour v)
+    v
+    (throw (str "No method in multimethod 'compile-to-type' for dispatch value " v))))
 
-;;TODO Test And Or
+;;TODO Test And Or -- Refactor AndPatternMatcher note that this in essence is a SequenceMatch.
+;;TODO Add repeated patterns
+
 
 ;;;;;;;;;;;;;;;;
 ;;;;; public functions
@@ -289,20 +308,61 @@
   (compile-to-type pattern))
 
 ;;;;;;;;;;;;;;;
-;;;; Entry point function
+;;;; Entry point functions
+;;;; compile a pattern then match against it
+
 (defn compile
   "Compile a grammar-input which is made of symbols, keyword, pattern short hands and patterns
-   E.g [:The :?var :is :?color]"
+   E.g
+      Simple grammar [:The :?var :is :?color]
+      Embedded grammar [['?is :_constant_ :The] ['?is :?var =] ['?is :_contant_ =] ['?is :?color identity]]
+        Note that the embedded grammar is within a single vector i.e all grammars short hand or expanded are
+        contained within a single vector"
   [grammar-input]
-  (when (not-empty grammar-input)
-    (->SeqPattern
-      (->> grammar-input
-           (map translate-to-pattern)
-           optimise-match-is-constants
-           (map compile-pattern)
-           (filter (complement nil?))
-           update-multi-occur-patterns
-           (apply tuple/vector)))))
+  (-compile grammar-input))
 
-(defn match [compiled-pattern input]
+(defn match
+  "Run a match on an input sequence using the compiled pattern
+   Returns: on-success [match-map remaining-inputs] on-failure nil"
+  [compiled-pattern input]
   (-match compiled-pattern input))
+
+(defn success
+  "Returns true if the match was a success"
+  [match-result]
+  (match? match-result))
+
+(defn match-map
+  "Return the match-map of a match result"
+  [match-result]
+  (first match-result))
+
+(defn match-remaining-inputs
+  "After running match there might be inputs that were not evaluated or not required for the match
+   this function returns the remaining inputs from a match result"
+  [match-result]
+  (second match-result))
+
+;;;; compilation extension
+;;;
+(extend-protocol PatternCompiler
+
+  String
+  (-compile [s]
+    (-compile (line->words s)))
+
+  Collection
+  (-compile [grammar-input]
+    (when (not-empty grammar-input)
+      (let [matchers (->> grammar-input
+                          (map translate-to-pattern)
+                          optimise-match-is-constants
+                          (map compile-pattern)
+                          (filter (complement nil?))
+                          update-multi-occur-patterns
+                          (apply tuple/vector))]
+
+        ;;for a single matcher return that matcher
+        (if (= (count matchers) 1)
+          (first matchers)
+          (->SeqPattern matchers))))))

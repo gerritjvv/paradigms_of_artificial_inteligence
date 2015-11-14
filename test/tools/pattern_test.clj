@@ -60,39 +60,22 @@
 
 (deftest test-match1
   (is (= (pattern/match (pattern/compile (pattern/line->words "I need a ?X")) (pattern/line->words "I need a vacation"))
-         {"X" "vacation"}))
+         [{"X" "vacation"} '()]))
 
   (is (not (pattern/match (pattern/compile (pattern/line->words "I need a ?X")) (pattern/line->words "I really need a vacation"))))
   (is (not (pattern/match (pattern/compile (pattern/line->words "I want a ?X")) (pattern/line->words "I need a vacation"))))
-  (is (= (pattern/match   (pattern/compile (pattern/line->words "I need a ?X and a ?Y")) (pattern/line->words "I need a vacation and a hobby")) {"X" "vacation" "Y" "hobby"})))
+  (is (= (pattern/match  (pattern/compile (pattern/line->words "I need a ?X and a ?Y")) (pattern/line->words "I need a vacation and a hobby"))
+         [{"X" "vacation" "Y" "hobby"} ()])))
 
 
 (deftest test-match-multi
-  (is (= (pattern/match   (pattern/compile (pattern/line->words "I need a ?*X in ?Y")) (pattern/line->words "I need a nice long vacation in Mallorca")))
-      {"X" ["nice" "long"] "Y" "Mallorca"}))
-
-(comment
-  (deftest test-variable
-    (is (pattern/variable? "?x"))
-    (is (not (pattern/variable? "x"))))
-
-  (deftest test-pat-match-simple
-    (is (pattern/pat-match (pattern/line->words "I need a ?X") (pattern/line->words "I need a vacation")))
-    (is (not (pattern/pat-match (pattern/line->words "I need a ?X") (pattern/line->words "I really need a vacation"))))
-    (is (not (pattern/pat-match (pattern/line->words "I want a ?X") (pattern/line->words "I need a vacation"))))
-
-    ;;check pattern bindings are returned
-    (is (= (pattern/pat-match (pattern/line->words "I need a ?X and a ?Y") (pattern/line->words "I need a vacation and a hobby")) {"?X" "vacation" "?Y" "hobby"})))
+  ;;note compile can also take a string and will run line->words on it
+  (is (= (pattern/match (pattern/compile "I need a ?*X in ?Y") (pattern/line->words "I need a nice long vacation in Mallorca")))
+      [{"X" ["nice" "long"] "Y" "Mallorca"} '()]))
 
 
-  (deftest test-patch-match-segment
-    (is
-      (=
-        (pattern/pat-match (pattern/line->words "I need a ?*X in ?Y") (pattern/line->words "I need a nice long vacation in Mallorca"))
-        {"?*X" "nice long vacation" "?Y" "Mallorca"}))
 
-    (is
-      (=
-        (pattern/pat-match (pattern/line->words "I need a ?*X in ?Y") (pattern/line->words "I need a nice long vacation"))
-        {"?*X" "nice long vacation"})))
-  )
+(deftest test-and-pattern
+  (let [p (pattern/compile [['?and (pattern/compile "This is a ?p") (pattern/compile "This is a ?p")]] )]
+
+    (is (pattern/success (pattern/match p (pattern/line->words "This is a 12121"))))))
