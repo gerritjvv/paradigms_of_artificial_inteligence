@@ -198,7 +198,12 @@
   (-match [_ inputs]
     ;;return the first matcher that matches, and return its data
     ;;return the rest input from the matcher that read the farthest.
-    (first (some match-map? (map #(-match % inputs) matchers)))))
+    (let [size (count matchers)]
+      (loop [i 0]
+        (when (< i size)
+          (if-let [match-result (-match (nth matchers i) inputs)]
+            match-result
+            (recur (inc i))))))))
 
 (defrecord SeqPattern [matchers]
   PatternBehaviour

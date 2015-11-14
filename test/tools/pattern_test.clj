@@ -77,5 +77,10 @@
 
 (deftest test-and-pattern
   (let [p (pattern/compile [['?and (pattern/compile "This is a ?p") (pattern/compile "This is a ?p")]] )]
-
     (is (pattern/success (pattern/match p (pattern/line->words "This is a 12121"))))))
+
+
+(deftest test-or-pattern
+  (let [p (pattern/compile [['?or (pattern/compile "This is a ?p") (pattern/compile "The ?v is ?p")]] )]
+    (is (= (pattern/match-map (pattern/match p (pattern/line->words "The number is 12121")))
+           {"v" "number" "p" "12121"}))))
