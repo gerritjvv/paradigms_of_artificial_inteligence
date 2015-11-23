@@ -68,6 +68,15 @@
     (.startsWith v "?")  (.substring v 1)
     :else :_constant_))
 
+(defmacro check-repeat-match-results
+  "Utility function for the RepeatedPattern
+   when (and groups (<= min-n m max-n))
+     [{:groups groups} input-xs]
+  "
+  [groups min-n max-n n input-xs]
+  `(when (and ~groups (<= ~min-n ~n ~max-n))
+    (tuple/vector (tuple/hash-map :groups ~groups) ~input-xs)))
+
 (defn is*-var?
   "
   v : keyword, symbol or string
@@ -220,6 +229,17 @@
                   nil))))
           (tuple/vector match-map input-xs))))))
 
+(defrecord RepeatedPattern [^long min-n ^long max-n matcher]
+  PatternBehaviour
+  ;;match a pattern at least min-n and at most max-n
+  (-match [_ input]
+    (loop [groups nil input-xs input n 0]
+      (if input-xs
+        (let [[match-map input-x] (-match matcher input-xs)]
+          (if match-map
+            (recur (conj groups match-map) input-x (inc n))
+            (check-repeat-match-results groups min-n max-n n input-xs)))
+        (check-repeat-match-results groups min-n max-n n input-xs)))))
 
 (defrecord IsConstantMergedPattern [constants]
   PatternBehaviour
@@ -249,11 +269,9 @@
 (defmethod valid-pattern-schema? '?and [pattern]
   (valid-multi-pattern-schema? pattern))
 
-
 (defmethod valid-pattern-schema? '?or [patterns]
   (and (not-empty patterns)
        (every? valid-pattern-schema? patterns)))
-
 
 (defmethod translate-to-pattern String [^String v]
   (let [var-name (extract-var-name v)
@@ -294,6 +312,13 @@
 
 (defmethod compile-to-type '?constants-match [[_ constants]]
   (->IsConstantMergedPattern constants))
+
+(defmethod compile-to-type '?repeat [[_ min-n max-n pattern]]
+  (when-not (and (number? min-n) (number? max-n) (coll? pattern))
+    (throw (RuntimeException. (str "Repeat pattern needs to be ['?repeat min-n max-n pattern] but got ['?repeat " min-n " " max-n " " pattern))))
+
+  (->RepeatedPattern (long min-n) (long max-n) (compile-pattern pattern)))
+
 
 (defmethod compile-to-type :default [v]
   (if (satisfies? PatternBehaviour v)

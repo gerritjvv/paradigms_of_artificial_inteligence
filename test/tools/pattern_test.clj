@@ -87,3 +87,9 @@
 
     (is (= (pattern/match-map (pattern/match p (pattern/line->words "This is a 12121")))
            {"p" "12121"}))))
+
+
+(deftest test-repeated
+  (let [p (pattern/compile [['?repeat 1 5 (pattern/compile "number ?n")]])]
+    (is (= (pattern/match-map (pattern/match p (pattern/line->words "number 10 number 11 number 11 end")))
+           {:groups '({"n" "11"} {"n" "11"} {"n" "10"})}))))
