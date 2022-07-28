@@ -6,8 +6,8 @@
 
      Usage
 
-      (pattern/pat-match (pattern/line->words \"I need a ?X and a ?Y\") (pattern/line->words \"I need a vacation and a hobby\")) {\"?X\" \"vacation\" \"?Y\" \"hobby\"}
-      (pattern/pat-match (pattern/line->words \"I need a ?*X in ?Y\") (pattern/line->words \"I need a nice long vacation in Mallorca\")) =>   {\"?*X\" \"nice long vacation\" \"?Y\" \"Mallorca\"}
+      (pattern/match (pattern/line->words \"I need a ?X and a ?Y\") (pattern/line->words \"I need a vacation and a hobby\")) {\"?X\" \"vacation\" \"?Y\" \"hobby\"}
+      (pattern/match (pattern/line->words \"I need a ?*X in ?Y\") (pattern/line->words \"I need a nice long vacation in Mallorca\")) =>   {\"?*X\" \"nice long vacation\" \"?Y\" \"Mallorca\"}
 
      "}
   tools.pattern
